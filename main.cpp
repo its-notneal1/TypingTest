@@ -1,90 +1,183 @@
-#include <iostream>
-#include <string>
-#include <vector>
-#include <fstream>
-#include <ctime>
-#include <stdlib.h>
-#include <stdio.h>
-#include <time.h>
-#include <chrono>
+/*****************************************
+Command line typing test created by Neal A.
+4/29/2021 
+*******************************************/
+#include <iostream> // std::cout, std::cin
+#include <string> // std::string
+#include <fstream> // std::ifstream 
+#include <chrono> // std::chrono::steady_clock::now()
+#include <vector> // std::vector
+#include <cstdlib> // rand()
+#include <stdlib.h> // system("clear/cls")
+#include <unistd.h> // usleep() ## 1000000 = 1s
+#include <sstream> // std::stringstream
+#include <iomanip> // std::setprecision
 
-#ifdef _WIN32
-    #include <Windows.h>
-#else
-    #include <unistd.h>
-#endif
-
-void clearScreen();
-void countDown(); // count down
-void typingGame(int& wordsPerMinute, double& accuracy, std::string sentence);
-void viewStats(const std::vector<int> wordsPerMinute, const std::vector<double> accuracy);
-int numberOfWords(const std::string sentence);
-
-class Sentences {
-public:
-    Sentences() {
-        sentenceList.push_back("Your time is limited, so don't waste it living someone else's life. Don't be trapped by dogma - which is living with the results of other people's thinking. - Steve Jobs");
-        sentenceList.push_back("If life were predictable it would cease to be life, and be without flavor. - Eleanor Roosevelt");
-        sentenceList.push_back("Fear is the path to the dark side. Fear leads to anger. Anger leads to hate. Hate leads to suffering. - Yoda");
-    }
-    std::string chooseSentence() {
-        srand(time(NULL));
-        int index = rand() % sentenceList.size();
-        return sentenceList[index];
-    }
-private:
-    std::vector<std::string> sentenceList;
+struct TypingStat {
+    int wpm;
+    double accuracy;
 };
 
+class EmptyWordList{}; // exception class
+
+bool readFromFile(std::vector<std::string> *&wordList, const char *filename);
+void clearScreen();
+TypingStat typeTest(std::vector<std::string> *&wordList); 
+std::ostream &operator<<(std::ostream &out, const TypingStat &userStat);
 
 int main() {
-    Sentences sentencesClass;
-    char response;
-
-    // game statistics variables
-    std::vector<int> wordsPerMinute_vec;
-    std::vector<double> accuracy_vec;
-
-    int wordsPerMinute;
-    double accuracy;
-
+    srand(time(NULL));
+    std::vector<std::string> *wordList = new std::vector<std::string>; // store in words in vector for O(1) access
+    std::vector<TypingStat> userStats;
+    char input;
+    const char *defaultWordFile = "default.txt";
+    if(!readFromFile(wordList, defaultWordFile)) {
+        std::cout << "Default File Not Opened" << std::endl;
+    }
+    std::string filenameInput;
+    TypingStat gameStat;
     while(1) {
-        wordsPerMinute = 100;
-        accuracy = 100;
-        std::cout << "|------------------------|" << std::endl;
-        std::cout << "| Neal's C++ Typing Game |" << std::endl;
-        std::cout << "|------------------------|" << std::endl;
-        std::cout << "| [A.] Play Game         |" << std::endl;
-        std::cout << "| [B.] View Stats        |" << std::endl;
-        std::cout << "| [C.] Exit Application  |" << std::endl;
-        std::cout << "|________________________|" << std::endl;
-        std::cout << "Enter Response: ";
-        std::cin >> response;
-        std::cin.ignore(250, '\n');
-
-        switch(response) {
-
+        std::cout << "===== Type Test =====" << std::endl;
+        std::cout << "[A.] Start Type Test  " << std::endl;
+        std::cout << "[B.] Load Custom List " << std::endl;
+        std::cout << "[C.] View Stats       " << std::endl;
+        std::cout << "[D.] End Program      " << std::endl;
+        std::cout << "======================" << std::endl;
+        std::cout << "Enter choice: ";
+        std::cin >> input;
+        std::cin.ignore(250, '\n'); // if additional characters are added skip over
+        switch(input) {
             case('A'):
             case('a'):
-                typingGame(wordsPerMinute, accuracy, sentencesClass.chooseSentence());
-                wordsPerMinute_vec.push_back(wordsPerMinute);
-                accuracy_vec.push_back(accuracy);
+                try {
+                    gameStat = typeTest(wordList);
+                    userStats.push_back(gameStat);
+                    clearScreen();
+                } catch (EmptyWordList emptyListError) {
+                    std::cout << "Error: No words were generated " << std::endl;
+                    std::cout << "Add a word list file into folder" << std::endl;
+                }
                 break;
             case('B'):
             case('b'):
-                viewStats(wordsPerMinute_vec, accuracy_vec);
+                std::cout << "Enter filename: ";
+                std::cin >> filenameInput;
+                clearScreen();
+                if(!readFromFile(wordList, filenameInput.c_str())) {
+                    std::cout << filenameInput << " does not exist" << std::endl;                    
+                } else {
+                    std::cout << "Wordlist has been updated" << std::endl;
+                }
                 break;
             case('C'):
             case('c'):
-                std::cout << "Goodbye!" << std::endl;
-                return 0;
+                clearScreen();
+                if(userStats.size() == 0) {
+                    std::cout << "No Recorded Data" << std::endl;
+                }
+                for(int i = 0; i < userStats.size(); i++) {
+                    std::cout << "| Game " << i + 1 << " |" << std::endl;
+                    std::cout << userStats[i] << std::endl;
+                }
                 break;
+            case('D'):
+            case('d'):
+                return 0;
             default:
-                std::cout << "No Option Selected!" << std::endl;
-                std::cin.clear();
+                std::cout << "Invalid Input. \nEnter choice: " << std::endl;
                 break;
         }
     }
+    return 0;
+}
+
+/*********************************************************
+const char string instead of std::string to skip string to
+c-string conversion to open file
+std::vector<std::string> *wordList pointer object
+passed by reference to avoid reconstruction
+
+Return true if file was opened, false if not
+***********************************************************/
+bool readFromFile(std::vector<std::string> *&wordList, const char *filename) {
+    if(wordList->size() != 0) { // empty the vector if a new list is added
+        wordList->clear(); 
+    }
+    std::ifstream fin;
+    fin.open(filename);
+    if(!fin.is_open()) {
+        return false;
+    }
+    std::string words;
+    while(!fin.eof()) {
+        fin >> words;
+        wordList->push_back(words);
+    }
+    return true;
+}
+
+/********************************************************
+const std::vector<std::string> *&wordList - pointer
+object pass by reference so no reconstuction
+const no changes can be made
+********************************************************/
+TypingStat typeTest(std::vector<std::string> *&wordList) {
+    if(wordList->size() == 0) {
+        throw EmptyWordList();
+    }
+
+    std::string word, userInput; 
+    // word stores a single word from stringstream userInput is the user's typing
+    std::vector<std::string> randomWords; // store words to be typed and compared
+    unsigned int listSize = wordList->size(), numOfWords = rand() % 15 + 10; // generate the number of words to be displayed on screen
+    TypingStat userStat;
+    for(int i = 0; i < numOfWords; i++) { // generate random numbers into the vector
+        randomWords.push_back(wordList->at(rand() % listSize));
+    }
+    clearScreen();
+    std::cout << "Get ready to type in: " << std::endl;
+    for(int i = 5; i > 0; i--) { // countdown
+        std::cout << i << std::endl;
+        usleep(1000000);
+    }
+    std::cout << "=========================================================================" << std::endl;
+    for(int i = 0; i < randomWords.size(); i++) {
+        if(i != 0 && i % 9 == 0) std::cout << std::endl;
+        std::cout << randomWords[i] << " ";
+    }
+    std::cout << "\n=========================================================================" << std::endl;
+    auto start = std::chrono::steady_clock::now();
+    getline(std::cin, userInput);
+    auto end = std::chrono::steady_clock::now(); 
+    // while((std::chrono::duration_cast<std::chrono::seconds>(end - start).count() < 60)); future reference
+    std::chrono::duration<double> timeElapsed = end - start;
+    double timeElapsedCount = timeElapsed.count(); 
+    
+    std::stringstream ss(userInput);
+    int tempctr = 0, missed = 0, correct = 0;// tempctr used to access randWords vector for comparison and the number of words entered
+    while(ss >> word) {
+        randomWords[tempctr++] != word ? missed++ : correct++;
+    }
+    userStat.accuracy = (100.0 * ((numOfWords - (double)missed) / (double)numOfWords));
+    userStat.wpm = (tempctr / (double)(timeElapsedCount / 60.0)); // convert timeElapsed 
+    std::cout << "\n=========================================================================" << std::endl;
+    std::cout << "Time taken: " << std::setprecision(2) << std::fixed << timeElapsedCount << "s" << std::endl;
+    std::cout << "Total number of words: " << numOfWords << std::endl;
+    std::cout << "Number of words typed: " << tempctr << std::endl;
+    std::cout << "Correct: " << correct << std::endl;
+    std::cout << "Missed: " << missed << std::endl;
+    std::cout << userStat << std::endl;
+    std::cout << "Press enter to continue: ";
+    std::cin.ignore();
+    return userStat;
+}
+
+std::ostream &operator<<(std::ostream &out, const TypingStat &userStat) {
+    out << "==== Stats ====" << std::endl;
+    out << "WPM: " << userStat.wpm << std::endl;
+    out << "Accuracy: " << std::setprecision(2) << std::fixed << userStat.accuracy << "%" << std::endl;
+    out << "===============" << std::endl;
+    return out;
 }
 
 void clearScreen() {
@@ -93,89 +186,4 @@ void clearScreen() {
     #else
         system("clear");
     #endif
-}
-
-void countDown() {
-    #ifdef _WIN32
-            sleep(1000000);
-    #else
-        usleep(1000000);
-    #endif
-}
-
-void typingGame(int& wordsPerMinute, double& accuracy, std::string sentence) {
-    std::string userText; // the user input
-    int totalChar = 0, correct = 0, incorrect = 0;
-    double game_duration;
-
-    int numberOfWords_userText;
-
-    std::cout << "You Will Be Given 120 Seconds To Complete This Sentence So Get Ready!" << std::endl;
-    std::cout << "The Game Will Begin In: " << std::endl;
-    for (int i = 5; i > 0; i--) {
-        std::cout << i << std::endl;
-        countDown();
-    }
-    std::cout << "Begin: " << std::endl;
-    std::cout << "-------------------------------------------------------------------------------------------------" << std::endl;
-    std::cout << sentence << std::endl;
-    std::cout << "-------------------------------------------------------------------------------------------------" << std::endl;
-
-    auto start = std::chrono::steady_clock::now();
-    std::cout << "Begin Typing: " << std::endl;
-    getline(std::cin, userText);
-    auto end = std::chrono::steady_clock::now();
-    std::chrono::duration<double> elapsedTime_seconds = end - start;
-    game_duration = elapsedTime_seconds.count();
-    std::cout << "Elapsed Time: " << game_duration << std::endl;
-
-    // now to compare for accuracy
-
-    for (std::string::size_type i = 0; i < sentence.length(); i++) {
-        if (sentence[i] == userText[i]) {
-            correct++;
-        }
-        else {
-            incorrect++;
-            std::cout << i << " - " << userText[i] << std::endl;
-        }
-    }
-    clearScreen();
-    std::cout << "The Sentence: " << sentence << std::endl;
-    std::cout << "Your Typing: " << userText << std::endl;
-    // calculate accuracy
-    totalChar = correct + incorrect;
-    accuracy *= (1.0 * correct) / (1.0 * totalChar);
-    std::cout << "Correct Letters: " << correct << std::endl;
-    std::cout << "Incorrect Letters: " << incorrect << std::endl;
-    std::cout << "Your Accuracy: " << accuracy << "%" << std::endl;
-
-    // calculate speed / WPM
-    wordsPerMinute = numberOfWords(userText) / (game_duration / 60); // multiply 60 to 
-    std::cout << "Your Words Per Minute: " << wordsPerMinute << " WPM" << std::endl;
-}
-
-void viewStats(const std::vector<int> wordsPerMinute, const std::vector<double> accuracy) {
-    clearScreen();
-    if (wordsPerMinute.size() == 0) {
-        std::cout << "No Games Found" << std::endl;
-        return;
-    }
-    for (int i = 0; i < wordsPerMinute.size(); i++) {
-        std::cout << "----------------------------" << std::endl;
-        std::cout << "Game " << i + 1 << std::endl;
-                std::cout << "Accuracy: " << accuracy[i] << "%" << std::endl;
-        std::cout << "Words Per Minute: " << wordsPerMinute[i] << "WPM" << std::endl;
-        std::cout << "----------------------------" << std::endl;
-    }
-}
-
-int numberOfWords(const std::string sentence) {
-    int numWords = 1;
-    for (std::string::size_type i = 0; i < sentence.size(); i++) {
-        if (sentence[i] == ' ' && sentence[i + 1] != '-' && sentence[i + 1] != '&' && sentence[i + 1] != '/') {
-            numWords++;
-        }
-    }
-    return numWords;
 }
